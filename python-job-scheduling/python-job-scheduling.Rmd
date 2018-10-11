@@ -5,7 +5,7 @@ date: Oct 11, 2018
 output:
   revealjs::revealjs_presentation:
     css: styles.css
-    theme: simple
+    theme: moon
     highlight: pygments
     transition: none
     center: true
@@ -181,14 +181,18 @@ Note: MacOS also uses `launchd` and in general views crontab as deprecated even 
 
 <img src="static/crontab_guru.png" alt="drawing" width="700"/>
 
-## `cron` is not python
+## 
 
 <section style="text-align: left;">
 
+`cron` is not python
+
 **Pros**
 
-- faily simple
+- fairly simple
 - available by default on *nix systems
+- easy to get started with
+- works well for small tasks with low level of fault tolerance needed
 
 **Cons**
 
@@ -290,6 +294,7 @@ docker run --name redis-scheduler -d -p 6379:6379 redis
 ```python
 from celery import Celery
 from celery.schedules import crontab
+from my_cool_script import run_job
 
 app = Celery('tasks', broker='redis://redis:6379/0')
  
@@ -397,6 +402,8 @@ You can configue celery to send email or post to slack or retry or log or...
 
 basically whatever you want by using [celery.signals](http://docs.celeryproject.org/en/latest/userguide/signals.html)
 
+You can think of `signals` as _IFTTT_ for `celery` 
+
 ## [`airflow`](https://airflow.apache.org/)
 
 ## 
@@ -441,13 +448,13 @@ default_args = {
 ```
 
 ```python
-dag = DAG('my_cool_scrip', default_args=default_args,
+dag = DAG('my_cool_script', default_args=default_args,
     # schedule_interval = '*/15 9-17 * * *'
     # schedule_interval = timedelta(3600)
     schedule_interval = '@hourly')
 
 run_job_task = PythonOperator(
-    task_id = 'run whole job',
+    task_id = 'run-whole-job',
     python_callable = run_job,
     dag = dag)
 ```
@@ -462,11 +469,13 @@ with open('currencies.csv', 'r') as pair_file:
     
 for pair in pairs:
     run_job_task = PythonOperator(
-          task_id = f'process {pair}',
+          task_id = f'process-{pair}',
           python_callable = run_job,
           op_args = [pair],
           dag=dag)
 ```
+
+_could have also made the read file an upstream task_
 
 ##
 
@@ -478,6 +487,7 @@ for pair in pairs:
 - has simple + advanced scheduling syntax
 - has awesome web UI
 - easier to scale jobs up and elegantly handle complexity
+- available on GCP as a managed service via [Cloud Composer](https://cloud.google.com/composer/)
 
 **Cons**
 
@@ -487,13 +497,199 @@ for pair in pairs:
 
 </section>
 
-## `AWS Lambda` 
+## [`AWS Lambda`](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html) 
+
+##
+
+<section style="text-align: left;">
+
+`AWS Lambda` can be thought of as _Functions as a service_
+
+Essentially, it's a container that executes a small bit of work on AWS compute engines. However, you don't need to worry about maintaining or launching those containers. Lamdba automatically starts up when your function is called.
+
+Can be thought of as either a REST API model or cron job -- enables and excels at both.
+
+Has a limit of 15 minutes per task so have to keep your jobs small. However, you can use [AWS ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/scheduled_tasks.html) or [AWS Fargate](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/scheduled_tasks.html) to run cron tasks instead of your jobs are too big for Lambda.
+
+</section>
+
+##
+
+Adjusting code for AWS Lambda
+
+```python
+def lambda_handler(event=None, context=None):
+    run_job()
+```
+
+##
+
+<section style="text-align: left;">
+
+handler function name can be whatever you want 
+
+```
+event – AWS Lambda uses this parameter to pass in event data to the 
+handler. This parameter is usually of the Python dict type. It can 
+also be list, str, int, float, or NoneType type.
+
+context – AWS Lambda uses this parameter to provide runtime 
+information to your handler. This parameter is of the LambdaContext 
+type.
+```
+
+Probably also want to [adjust your logging](https://docs.aws.amazon.com/lambda/latest/dg/python-logging.html), maybe even log as JSON format for AWS Cloudwatch monitoring that comes with Lambda.
+
+Also can't use sqlite as a database in Lambda, but super easy to swtich to AWS S3.
+
+</section>
+
+##
+
+<section style="text-align: left;">
+
+How to deploy python script to AWS Lambda
 
 
+* create a virtualenv (or pipenv or conda env) and install all your dependencies in that environment
+* zip up the entire directory of your installed dependencies from your virtual env + your code
+    * do not zip the top directory, i.e. when the zip file gets unzipped Lambda needs to see everything and not need to `cd` into your package
+    * [AWS has more detailed instructions if you need them](https://docs.aws.amazon.com/lambda/latest/dg/lambda-python-how-to-create-deployment-package.html)
+* upload that zip file through AWS console or CLI
+* from the Lambda function in AWS console or through AWS CLI, create a schedule to run using Cloudwatch
 
-## `GCP Cloud Functions`
+</section>
+
+##
+
+Example deploy using AWS CLI
+
+```shell
+aws lambda create-function \
+--region us-east-2 \
+--function-name GetCurrencyRate \
+--zip-file fileb://my-cool-deployment-package.zip \
+--role arn:aws:iam::account-id:role/lambda_basic_execution  \
+--handler my_cool_script.lambda_handler \
+--runtime python3.6 \
+--timeout 300 \
+--memory-size 512
+```
+
+##
+
+[Step-by-step directions for AWS Console](https://www.fullstackpython.com/blog/aws-lambda-python-3-6.html)
+
+Function created in AWS Console
+
+![](https://i1.wp.com/www.kevinhooke.com/wp-content/uploads/2018/03/img_5abb18a6bbefb.png)
+
+##
+
+Example of turning on [scheduled Cloudwatch trigger](https://www.kevinhooke.com/2018/03/27/running-aws-lambda-functions-on-a-timed-schedule/)
+
+<img src="https://i0.wp.com/www.kevinhooke.com/wp-content/uploads/2018/03/img_5abb190b2fb1c.png" alt="drawing" width="600"/>
 
 
+##
+
+<section style="text-align: left;">
+
+More [deploy](https://docs.aws.amazon.com/lambda/latest/dg/lambda-python-how-to-create-deployment-package.html) and [schedule](https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/RunLambdaSchedule.html) documentation
+
+Alternative ways to deploy that I like: 
+
+* [docker using `lambci/lambda:build-python3.6`](https://hub.docker.com/r/lambci/lambda/)
+* [AWS SAM](https://docs.aws.amazon.com/lambda/latest/dg/serverless_app.html)
+* [serverless](https://github.com/serverless/examples/tree/master/aws-python-scheduled-cron) 
+
+If you want dead simple and have freedom to pick your own AWS deploy tools, `serverless` is probably the choice you should make.
+
+```shell
+serverless deploy
+```
+
+</section>
+
+##
+
+<section style="text-align: left;">
+
+**Pros**
+
+* built in logging and monitoring through Cloudwatch
+* no infrastructe/server management
+* [dirt cheap for small tasks](https://aws.amazon.com/lambda/pricing/) -- 1M free requests per month or ~2666 5 minute jobs at 512mb like example
+* trivial to modify most simple scripts to work on Lambda 
+
+**Cons**
+
+* have to be on AWS
+* requires correct IAM roles & permissions (not always trivial)
+* 15 minute runtime limit
+* 512mb disk space limit so have to keep packages/dependencies/data small
+
+</section>
+
+
+## [`GCP Cloud Functions`](https://cloud.google.com/functions/docs/quickstart-console)
+
+##
+
+Google Cloud Functions are pretty much a mirror of AWS Lambda, except GCP is way easier to use IMHO
+
+##
+
+Except in this case...
+
+GCP Cloud Functions doesn't offer a scheduler!
+
+Creating a work-around is not too horrible, but way more effort than should be necessary
+
+* create a Google App Engine (GAE) app
+* create a cron service for that app
+* have cron tell the GAE app to send a request to Cloud Function using Pub/Sub as messenger
+
+##
+
+![](https://1.bp.blogspot.com/-jBmtm41Wqa8/WNVLJho7KhI/AAAAAAAABAU/IHlzp8CdSDAU7qBPMnnuqtSGPr1pMF-MQCLcB/s1600/Firebase_FloatRight_AppEngine.png)
+
+##
+
+Why did I even bother telling you about GCP Cloud functions?
+
+* deploy is crazy easy -- paste python code, paste requirements.txt file, click deploy
+* you can edit deployed function from console and it automatically creates version numbers for you
+* monitoring, logs, and testing all available from function console page
+* _GCP will probably add a cron like schedule at some point?_
+
+##
+
+<img src="https://cloud.google.com/functions/img/qs-python-console.png" alt="drawing" height="500"/>
+
+##
+
+<img src="static/gcp_cloud_function_example.png" alt="drawing" height="600"/>
+
+## Quick decision matrix:
+
+|              | AWS    | GCP       | On Premise      |
+|--------------|--------|-----------|-----------------|
+| Small Data   | Lambda | GAE / GCE | cron / schedule |
+| Medium Data  | ECS    | GAE / GCE | celery          |
+| Big Data     | Glue   | Composer  | airflow         |
 
 ## Review and Final Thoughts
+
+<section style="text-align: left;">
+
+* Python is awesome
+* Tooling for scheduled jobs in Python is diverse and excellent
+* There's tons of documentation and helpful articles online for everything I shared
+* Options I didn't cover, but are worth looking into:
+    * python [`crontab`](https://pypi.org/project/python-crontab/) package
+    * python [`croniter`](https://pypi.org/project/croniter/) package
+    * python [Advanced Python Scheduler (`APScheduler`)](https://apscheduler.readthedocs.io/en/latest/) package
+
+</section>
 
