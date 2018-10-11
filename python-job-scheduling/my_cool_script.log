@@ -1,0 +1,8 @@
+2018-10-09 01:03:54 connecting to db
+2018-10-09 01:03:54 establishing db table...
+2018-10-09 01:03:54 getting data from USD_MXN
+2018-10-09 01:03:55 success!
+2018-10-09 01:03:55 formatting HTTP response data
+2018-10-09 01:03:55 inserting cleaned HTTP data to db table
+2018-10-09 01:03:55 clean data values: ('USD', 'MXN', 18.930455, '2018-10-09 06:03:55')
+2018-10-09 01:03:55 completed job

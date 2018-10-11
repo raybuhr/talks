@@ -1,0 +1,695 @@
+---
+title: "Tour of Job Scheduling in Python"
+author: Ray Buhr
+date: Oct 11, 2018
+output:
+  revealjs::revealjs_presentation:
+    css: styles.css
+    theme: moon
+    highlight: pygments
+    transition: none
+    center: true
+    reveal_options:
+      slideNumber: true
+---
+
+## Intro
+
+<section style="text-align: left;">
+
+- Learing Python is fun
+- Python is practical
+- learning is sometimes hard
+
+</section>
+
+## Scenario
+
+<section style="text-align: left;">
+
+Just finished writing a python script \n
+that automates a tedious task and will: 
+
+- save time 
+- collect new information
+- share insights
+- something _useful_
+
+</section>
+
+## Python is great for automation!
+
+<img src="https://img.devrant.com/devrant/rant/r_1572420_BFNQB.jpg" alt="drawing" width="500"/>
+
+## New Problem
+
+![Automate all the things!](https://cdn-images-1.medium.com/max/1200/1*TKt92huSBbSnbRNuAVTx_A.jpeg)
+
+## What will this talk cover?
+
+<section style="text-align: left;">
+
+- `cron` (and briefly Windows Task Scheduler)
+- `schedule`
+- `celery`
+- `airflow`
+- `AWS Lambda` 
+- `GCP Cloud Functions`
+- overview of trade-offs and how to decide which you should use
+
+</section>
+
+## About Me
+
+
+Data Science @ [Pangea Money Transfer](https://pangeamoneytransfer.com/)
+
+Undergrad: Occidental College
+
+Masters: UC Berkeley
+
+Started learning python January 2013
+
+## Example Code for this talk
+
+```python
+from collections import OrderedDict
+import logging
+import requests
+import sqlite3
+import time
+
+
+def get_currency_data(source_currency: str, dest_currency: str):
+    base_url = 'https://free.currencyconverterapi.com/api/v6/convert'
+    exchange = f'{source_currency}_{dest_currency}'
+    logging.info(f'getting data from {exchange}')
+    resp = requests.get(base_url, params={'q': exchange})
+    if not resp.ok:
+        logging.info(f'request failed with error: {resp.reason}')
+        return
+    logging.info('success!')
+    return resp.json()
+```
+
+##
+
+```python
+def cleanup_data(currency_resp_data):
+    logging.info('formatting HTTP response data')
+    resp_values = list(currency_resp_data.get('results').values())[0]
+    cleaned_data = OrderedDict()
+    cleaned_data['source_currency'] = resp_values.get('fr')
+    cleaned_data['dest_currency'] = resp_values.get('to')
+    cleaned_data['exchange_rate'] = resp_values.get('val')
+    cleaned_data['time'] = time.strftime(
+      '%Y-%m-%d %H:%M:%S', time.gmtime())
+    return cleaned_data
+```
+
+##
+
+```python
+def create_db_table(db_cursor):
+    logging.info('establishing db table...')
+    query = '''CREATE TABLE IF NOT EXISTS exchange_rates (
+        source_currency TEXT, dest_currency TEXT,
+        exchange_rate REAL, time TEXT)'''
+    db_cursor.execute(query)
+
+
+def save_to_db(db_cursor, clean_data):
+    logging.info('inserting cleaned HTTP data to db table')
+    clean_data_values = tuple(clean_data.values())
+    logging.info(f'clean data values: {clean_data_values}')
+    db_cursor.execute(
+        'INSERT INTO exchange_rates VALUES (?, ?, ?, ?)', 
+        clean_data_values)
+```
+
+## 
+
+```python
+def run_job():
+    logging.basicConfig(filename='my_cool_script.log',
+                        level=logging.INFO,
+                        format='%(asctime)s %(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S')
+    logging.info('connecting to db')
+    con = sqlite3.connect('exchange_rates.db')
+    cur = con.cursor()
+    create_db_table(cur)
+    raw_data = get_currency_data('USD', 'MXN')
+    clean_data = cleanup_data(raw_data)
+    save_to_db(cur, clean_data)
+    con.commit()
+    con.close()
+    logging.info('completed job')
+```
+
+## Example code log output
+
+![](static/python_my_cool_script_log.png)
+
+## `cron`
+
+## 
+
+<section style="text-align: left;">
+
+`cron` is a job scheduler built into \*nix systems 
+
+(e.g. Unix, Linux, BSD)
+
+`crontab` (cron+table) is a config file for `cron`
+
+Note: MacOS also uses `launchd` and in general views crontab as deprecated even though still supported
+
+</section>
+
+## 
+
+![](static/which_crontab.png)
+
+##
+
+![](static/crontab_example.png)
+
+##
+
+[crontab.guru](https://crontab.guru/)
+
+<img src="static/crontab_guru.png" alt="drawing" width="700"/>
+
+## 
+
+<section style="text-align: left;">
+
+`cron` is not python
+
+**Pros**
+
+- fairly simple
+- available by default on *nix systems
+- easy to get started with
+- works well for small tasks with low level of fault tolerance needed
+
+**Cons**
+
+- scheduling syntax designed for computes, not humans
+- requires that you are using *nix system
+- hard to get user env and variables right
+- crontab itself can't alert you if your jobs fail or never start (from https://crontab.guru)
+
+</section>
+
+## Windows Task Scheduler
+
+![](https://www.isunshare.com/images/article/windows-10/4-ways-to-open-task-scheduler-on-windows-10/open-task-scheduler-in-computer-management%20.png)
+
+[Link to Microsoft Docs for more information](https://docs.microsoft.com/en-us/windows/desktop/taskschd/task-scheduler-start-page)
+
+## [`schedule`](https://schedule.readthedocs.io/en/stable/)
+
+##
+
+<section style="text-align: left;">
+
+`schedule` is a _cron inspired_ module for Python
+
+Primary design concern was making the syntax more _"human-friendly"_
+
+</section>
+
+## sample code
+
+```python
+import schedule
+import time
+from my_cool_script import run_job
+
+schedule.every().hour.do(run_job)
+# Every 1 hour do main() (last run: [never], next run: 2018-10-09 02:25:06)
+
+while True:
+    schedule.run_pending()
+    time.sleep(3600)
+```
+
+##
+
+<section style="text-align: left;">
+
+**Pros**
+
+- `schedule` is Python
+- schedule syntax is way easier to read/write/interpret
+- really easy to tack onto existing scripts
+- more consistent and straight-forward that just the `time` module
+
+**Cons**
+
+- still can't alert you if your jobs fail or never start
+- logging is up to you
+- probably best to wrap in another tool like `nohup`
+
+</section>
+
+## [`celery`](http://docs.celeryproject.org/en/latest/userguide/periodic-tasks.html)
+
+##
+
+`celery` is a task queue
+
+```
++---------+          +--------+            +----------+
+|         |   Send   |        |   Worker   |          |
+|         |   work   |        |   fetches  |          |
+|  Job    | -------> | Queue  | <--------- |  Worker  | ---> [log]
+|         |          |        |            |          |
++---------+          +--------+            +----------+
+```
+
+##
+
+<section style="text-align: left;">
+
+`celery` requires something else to serve as the broker, typically one of:
+
+- redis
+- rabbitmq
+- AWS SQS
+
+</section>
+
+##
+
+using redis (using docker)
+
+```bash
+docker pull redis
+docker run --name redis-scheduler -d -p 6379:6379 redis
+```
+
+```python
+from celery import Celery
+from celery.schedules import crontab
+from my_cool_script import run_job
+
+app = Celery('tasks', broker='redis://redis:6379/0')
+ 
+@app.on_after_configure.connect
+def setup_periodic_tasks(sender, **kwargs):
+    # sender.add_periodic_task(
+    #     3600, run_job.s(),
+    #     name='run my job every hour')
+    sender.add_periodic_task(
+        crontab(hour='9-17', minute='*/15'),
+        run_job.s(), 
+        name='run my job every 15 min between 9 AM and 5 PM')
+ 
+@app.task
+def run_job():
+```
+
+##
+
+What if I want to start monitoring new currency exchanges?
+
+##
+
+old `run_job`
+
+```python
+def run_job():
+    logging.basicConfig(filename='my_cool_script.log',
+                        level=logging.INFO,
+                        format='%(asctime)s %(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S')
+    logging.info('connecting to db')
+    con = sqlite3.connect('exchange_rates.db')
+    cur = con.cursor()
+    create_db_table(cur)
+    raw_data = get_currency_data('USD', 'MXN')
+    clean_data = cleanup_data(raw_data)
+    save_to_db(cur, clean_data)
+    con.commit()
+    con.close()
+    logging.info('completed job')
+```
+
+##
+
+revised `run_job`
+
+```python
+@app.on_after_configure.connect
+def setup_periodic_tasks(sender, **kwargs):
+    sender.add_periodic_task(3600, 
+                             retrieve_currency_rates.s(), 
+                             name='run my job every hour')
+
+@app.task(name='get-all-currency-rates')
+def retrieve_currency_rates():
+    # read file containing all currency pairs to get data for
+    with open('currencies.csv', 'r') as pair_file:
+        pairs = pair_files.read().splitlines()
+    for pair in pairs:
+        # Note: apply_async requires args in format (arg,)
+        run_job.apply_async((pair, ))
+```
+
+```python
+@app.task(name='process-single-currency-rate')
+def run_job(currency_exchange_pair):
+    con = sqlite3.connect('exchange_rates.db')
+    cur = con.cursor()
+    create_db_table(cur) # only creates if doesn't already exist
+    source, dest = currency_exchange_pair.split(',')
+    raw_data = get_currency_data(source, dest)
+    clean_data = cleanup_data(raw_data)
+    save_to_db(cur, clean_data)
+    con.commit()
+    con.close()
+    logging.info('completed job')
+```
+
+##
+
+<section style="text-align: left;">
+
+**Pros**
+
+- python
+- has simple + advanced scheduling syntax
+- easier to scale jobs up, especially when composed of small tasks
+    - can easily add more workers to process work
+    - async means can runs in parallel
+
+**Cons**
+
+- requires external dependency for broker
+- requires more thought behind code design
+- requires more administration and config than crontab
+
+</section>
+
+##
+
+What about notifying you if your job fails or doesn't start?
+
+You can configue celery to send email or post to slack or retry or log or... 
+
+basically whatever you want by using [celery.signals](http://docs.celeryproject.org/en/latest/userguide/signals.html)
+
+You can think of `signals` as _IFTTT_ for `celery` 
+
+## [`airflow`](https://airflow.apache.org/)
+
+## 
+
+> Airflow is a platform to programmatically author, schedule and monitor workflows.
+
+##
+
+<section style="text-align: left;">
+
+* airflow asks you to code you jobs into directed acyclic graphs (DAGs)
+* with your jobs outlined into DAGs, you can pretty easily handle job dependencies and retry logic
+* the airflow scheduler will automatically split out the workload across your server (or cluster or k8s pods)
+* in addition, you get a web interface to monitor results and progress, quickly spot failures, manage environment variables, see code execution time trends, and visualize your DAGs
+
+</section>
+
+##
+
+![](https://airflow.apache.org/_images/airflow.gif)
+
+##
+
+an airflow DAG is a python script
+
+```python
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from datetime import datetime, timedelta
+from my_cool_script import run_job
+
+default_args = {
+    'owner': 'me',
+    'depends_on_past': False,
+    'start_date': datetime(2018, 10, 11),
+    'email': ['me@example.com'],
+    'email_on_failure': True,
+    'email_on_retry': False,
+    'retries': 5,
+    'retry_delay': timedelta(minutes=5),
+}
+```
+
+```python
+dag = DAG('my_cool_script', default_args=default_args,
+    # schedule_interval = '*/15 9-17 * * *'
+    # schedule_interval = timedelta(3600)
+    schedule_interval = '@hourly')
+
+run_job_task = PythonOperator(
+    task_id = 'run-whole-job',
+    python_callable = run_job,
+    dag = dag)
+```
+
+##
+
+What about running mulitple currency exchanges?
+
+```python
+with open('currencies.csv', 'r') as pair_file:
+    pairs = pair_files.read().splitlines()
+    
+for pair in pairs:
+    run_job_task = PythonOperator(
+          task_id = f'process-{pair}',
+          python_callable = run_job,
+          op_args = [pair],
+          dag=dag)
+```
+
+_could have also made the read file an upstream task_
+
+##
+
+<section style="text-align: left;">
+
+**Pros**
+
+- python (mostly / kind of)
+- has simple + advanced scheduling syntax
+- has awesome web UI
+- easier to scale jobs up and elegantly handle complexity
+- available on GCP as a managed service via [Cloud Composer](https://cloud.google.com/composer/)
+
+**Cons**
+
+- requires database for metadata and history (default is MySQL)
+- requires much more administration and config than crontab
+- learning curve of adapting to airflow philosophy
+
+</section>
+
+## [`AWS Lambda`](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html) 
+
+##
+
+<section style="text-align: left;">
+
+`AWS Lambda` can be thought of as _Functions as a service_
+
+Essentially, it's a container that executes a small bit of work on AWS compute engines. However, you don't need to worry about maintaining or launching those containers. Lamdba automatically starts up when your function is called.
+
+Can be thought of as either a REST API model or cron job -- enables and excels at both.
+
+Has a limit of 15 minutes per task so have to keep your jobs small. However, you can use [AWS ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/scheduled_tasks.html) or [AWS Fargate](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/scheduled_tasks.html) to run cron tasks instead of your jobs are too big for Lambda.
+
+</section>
+
+##
+
+Adjusting code for AWS Lambda
+
+```python
+def lambda_handler(event=None, context=None):
+    run_job()
+```
+
+##
+
+<section style="text-align: left;">
+
+handler function name can be whatever you want 
+
+```
+event – AWS Lambda uses this parameter to pass in event data to the 
+handler. This parameter is usually of the Python dict type. It can 
+also be list, str, int, float, or NoneType type.
+
+context – AWS Lambda uses this parameter to provide runtime 
+information to your handler. This parameter is of the LambdaContext 
+type.
+```
+
+Probably also want to [adjust your logging](https://docs.aws.amazon.com/lambda/latest/dg/python-logging.html), maybe even log as JSON format for AWS Cloudwatch monitoring that comes with Lambda.
+
+Also can't use sqlite as a database in Lambda, but super easy to swtich to AWS S3.
+
+</section>
+
+##
+
+<section style="text-align: left;">
+
+How to deploy python script to AWS Lambda
+
+
+* create a virtualenv (or pipenv or conda env) and install all your dependencies in that environment
+* zip up the entire directory of your installed dependencies from your virtual env + your code
+    * do not zip the top directory, i.e. when the zip file gets unzipped Lambda needs to see everything and not need to `cd` into your package
+    * [AWS has more detailed instructions if you need them](https://docs.aws.amazon.com/lambda/latest/dg/lambda-python-how-to-create-deployment-package.html)
+* upload that zip file through AWS console or CLI
+* from the Lambda function in AWS console or through AWS CLI, create a schedule to run using Cloudwatch
+
+</section>
+
+##
+
+Example deploy using AWS CLI
+
+```shell
+aws lambda create-function \
+--region us-east-2 \
+--function-name GetCurrencyRate \
+--zip-file fileb://my-cool-deployment-package.zip \
+--role arn:aws:iam::account-id:role/lambda_basic_execution  \
+--handler my_cool_script.lambda_handler \
+--runtime python3.6 \
+--timeout 300 \
+--memory-size 512
+```
+
+##
+
+[Step-by-step directions for AWS Console](https://www.fullstackpython.com/blog/aws-lambda-python-3-6.html)
+
+Function created in AWS Console
+
+![](https://i1.wp.com/www.kevinhooke.com/wp-content/uploads/2018/03/img_5abb18a6bbefb.png)
+
+##
+
+Example of turning on [scheduled Cloudwatch trigger](https://www.kevinhooke.com/2018/03/27/running-aws-lambda-functions-on-a-timed-schedule/)
+
+<img src="https://i0.wp.com/www.kevinhooke.com/wp-content/uploads/2018/03/img_5abb190b2fb1c.png" alt="drawing" width="600"/>
+
+
+##
+
+<section style="text-align: left;">
+
+More [deploy](https://docs.aws.amazon.com/lambda/latest/dg/lambda-python-how-to-create-deployment-package.html) and [schedule](https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/RunLambdaSchedule.html) documentation
+
+Alternative ways to deploy that I like: 
+
+* [docker using `lambci/lambda:build-python3.6`](https://hub.docker.com/r/lambci/lambda/)
+* [AWS SAM](https://docs.aws.amazon.com/lambda/latest/dg/serverless_app.html)
+* [serverless](https://github.com/serverless/examples/tree/master/aws-python-scheduled-cron) 
+
+If you want dead simple and have freedom to pick your own AWS deploy tools, `serverless` is probably the choice you should make.
+
+```shell
+serverless deploy
+```
+
+</section>
+
+##
+
+<section style="text-align: left;">
+
+**Pros**
+
+* built in logging and monitoring through Cloudwatch
+* no infrastructe/server management
+* [dirt cheap for small tasks](https://aws.amazon.com/lambda/pricing/) -- 1M free requests per month or ~2666 5 minute jobs at 512mb like example
+* trivial to modify most simple scripts to work on Lambda 
+
+**Cons**
+
+* have to be on AWS
+* requires correct IAM roles & permissions (not always trivial)
+* 15 minute runtime limit
+* 512mb disk space limit so have to keep packages/dependencies/data small
+
+</section>
+
+
+## [`GCP Cloud Functions`](https://cloud.google.com/functions/docs/quickstart-console)
+
+##
+
+Google Cloud Functions are pretty much a mirror of AWS Lambda, except GCP is way easier to use IMHO
+
+##
+
+Except in this case...
+
+GCP Cloud Functions doesn't offer a scheduler!
+
+Creating a work-around is not too horrible, but way more effort than should be necessary
+
+* create a Google App Engine (GAE) app
+* create a cron service for that app
+* have cron tell the GAE app to send a request to Cloud Function using Pub/Sub as messenger
+
+##
+
+![](https://1.bp.blogspot.com/-jBmtm41Wqa8/WNVLJho7KhI/AAAAAAAABAU/IHlzp8CdSDAU7qBPMnnuqtSGPr1pMF-MQCLcB/s1600/Firebase_FloatRight_AppEngine.png)
+
+##
+
+Why did I even bother telling you about GCP Cloud functions?
+
+* deploy is crazy easy -- paste python code, paste requirements.txt file, click deploy
+* you can edit deployed function from console and it automatically creates version numbers for you
+* monitoring, logs, and testing all available from function console page
+* _GCP will probably add a cron like schedule at some point?_
+
+##
+
+<img src="https://cloud.google.com/functions/img/qs-python-console.png" alt="drawing" height="500"/>
+
+##
+
+<img src="static/gcp_cloud_function_example.png" alt="drawing" height="600"/>
+
+## Quick decision matrix:
+
+|              | AWS    | GCP       | On Premise      |
+|--------------|--------|-----------|-----------------|
+| Small Data   | Lambda | GAE / GCE | cron / schedule |
+| Medium Data  | ECS    | GAE / GCE | celery          |
+| Big Data     | Glue   | Composer  | airflow         |
+
+## Review and Final Thoughts
+
+<section style="text-align: left;">
+
+* Python is awesome
+* Tooling for scheduled jobs in Python is diverse and excellent
+* There's tons of documentation and helpful articles online for everything I shared
+* Options I didn't cover, but are worth looking into:
+    * python [`crontab`](https://pypi.org/project/python-crontab/) package
+    * python [`croniter`](https://pypi.org/project/croniter/) package
+    * python [Advanced Python Scheduler (`APScheduler`)](https://apscheduler.readthedocs.io/en/latest/) package
+
+</section>
+
