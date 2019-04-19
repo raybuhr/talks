@@ -1,0 +1,78 @@
+---
+title: "Microservices in R"
+author: Ray Buhr
+date: April 27, 2019
+output: ioslides_presentation
+---
+
+# What are Microservices?
+
+
+## Software that is
+
+<div class="columns-2">
+
+  - single application
+  - self-contained
+  - independently developed and deployable
+  - typically small and lightweight
+  - typically communicate over networks
+
+![](https://developers.redhat.com/blog/wp-content/uploads/2016/06/microservices.png)
+
+</div>
+
+[Further reading on things to consider when building microservices](https://developers.redhat.com/blog/2017/05/04/the-truth-about-microservices/)
+
+_tl;dr_ - there are pros and cons of using microservices, but this is a very natural 
+development workflow for R programmers.
+
+## Typical examples using R 
+
+<div class="columns-2">
+  ![](https://shiny.rstudio.com/gallery/images/thumbnails/genome-browser.png)
+
+  - [Shiny single page web app](https://shiny.rstudio.com/gallery/)
+  - [Rmarkdown flexdashboard](https://rmarkdown.rstudio.com/flexdashboard/)
+</div>
+
+<div class="columns-2">
+
+  ![](https://d33wubrfki0l68.cloudfront.net/9271b9297337d10ce8ae066458a757ea823077be/2d74a/post/2018-10-23-rstudio-1-2-preview-plumber_files/new_plumber_api.png)
+
+  - [Plumber REST API](https://blog.rstudio.com/2018/10/23/rstudio-1-2-preview-plumber-integration/)
+</div>
+
+## Docker and R
+
+- Enclosed environment
+- Explicit dependencies
+- Reproducible build and execution
+- Perfect for microservices!
+
+<img src="https://raw.githubusercontent.com/rocker-org/rocker/master/icon/rocker.png">
+
+- [Why Docker helps reproducibility](https://colinfay.me/docker-r-reproducibility/)
+- [R Docker Tutorial](https://ropenscilabs.github.io/r-docker-tutorial/)
+- [Rocker project on Docker Hub](https://hub.docker.com/u/rocker)
+
+## Kubernetes
+
+<div class="centered">
+
+### ![](https://pbs.twimg.com/media/DXS62R6WsAIInOs.jpg) {.flexbox .vcenter}
+
+</div>
+
+## Why use Kubernetes?
+
+<div class="centered">
+<img src="https://cdn-images-1.medium.com/max/1600/1*KIVa4hUVZxg-8Ncabo8pdg.png" width=540 height=360>
+</div>
+<font size="4">ingress: access manager, service: application, pod: container</font>
+
+[More about R on Kubernetes](https://code.markedmondson.me/r-on-kubernetes-serverless-shiny-r-apis-and-scheduled-scripts/)
+
+[Example end-to-end Machine Learning on Kubeflow](https://github.com/kubeflow/example-seldon)
+
+# Thank you!
