@@ -5,10 +5,21 @@ date: April 27, 2019
 output: ioslides_presentation
 ---
 
-# What are Microservices?
+#
 
+My Links:
 
-## Software that is
+`r icon::fa("tv")` [`https://raybuhr.github.io/talks/microservices-in-r-lt/microservices-in-r-lt.html`](https://raybuhr.github.io/talks/microservices-in-r-lt/microservices-in-r-lt.html)
+
+`r icon::fa("github")` raybuhr
+
+`r icon::fa("rss-square")` [`https://raybuhr.github.io`](https://raybuhr.github.io)
+
+`r icon::fa("envelope")` `raymond.buhr@gmail.com` 
+
+`r icon::fa("linkedin")` [`https://linkedin.com/in/raybuhr`](https://linkedin.com/in/raybuhr) 
+
+## Microservices are a type of software
 
 <div class="columns-2">
 
