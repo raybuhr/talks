@@ -34,3 +34,5 @@ vignettes/*.pdf
 
 # Python
 *.pyc
+.ipynb_checkpoints/
+
